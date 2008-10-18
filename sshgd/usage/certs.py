@@ -52,22 +52,20 @@ class BaseOptions(RootBaseOptions):
                     "email": "emailAddress"
     }
 
-#    def opt_version(self):
-#        """Show version"""
-#        print os.path.basename(sys.argv[0]), '- 0.1'
-#
-#    opt_v = opt_version
-#
-#    def opt_help(self):
-#        """Show this help message"""
-#        usage.Options.opt_help(self)
-#
-#    opt_h = opt_help
+    def opt_version(self):
+        """Show version"""
+        print os.path.basename(sys.argv[0]), '- 0.1'
+    opt_v = opt_version
+
+    def opt_help(self):
+        """Show this help message"""
+        usage.Options.opt_help(self)
+    opt_h = opt_help
 
 #    def parseOptions(self, options=None):
 #        if self.parent:
-#            # Make sure the parent postOptions is ran before the
-#            # subCommands are to expand paths, etc
+#             Make sure the parent postOptions is ran before the
+#             subCommands are to expand paths, etc
 #            self.parent.postOptions()
 #        usage.Options.parseOptions(self, options)
 
@@ -155,6 +153,17 @@ class BaseCertOptions(BaseOptions):
             open(output_path, mode).write(certData)
         return cert
 
+    def opt_years(self, years):
+        try:
+            years = int(years)
+        except ValueError:
+            print "Please pass an integer"
+            sys.exit(1)
+        if years < 1:
+            print "Certificate will need to be valid for at least one year"
+            sys.exit(1)
+        self.opts['years'] = 60 * 60 * 24 * 365 * years
+
 class NewCA(BaseCertOptions):
     longdesc = """Create a new root certificate which will be used to issue both
     server and client certificates which are then use in authentication."""
@@ -166,10 +175,6 @@ class NewCA(BaseCertOptions):
 
     def postOptions(self):
         super(NewCA, self).postOptions()
-        if self.opts.get('years') < 1:
-            print "Certificate will need to be valid for at least one year"
-            sys.exit(1)
-        self.opts['years'] = 60 * 60 * 24 * 365 * self.opts.get('years')
 
         privateKey = self.generatePrivateKey(
             os.path.join(self.parent.get('output-dir'), 'private', 'cakey.pem')
@@ -191,18 +196,7 @@ class NewCert(BaseCertOptions):
          "The Root CA certificate file"]
     ]
 
-    def parseOptions(self, options):
-        print 123
-        super(NewCert, self).parseOptions(options)
-
     def postOptions(self):
-        print 2
-        super(NewCert, self).postOptions()
-        if self.opts.get('years') < 1:
-            print "Certificate will need to be valid for at least one year"
-            sys.exit(1)
-        self.opts['years'] = 60 * 60 * 24 * 365 * self.opts.get('years')
-
         rootCaCert = crypto.load_certificate(crypto.FILETYPE_PEM,
             open(os.path.abspath(
                 os.path.expanduser(self.opts.get("rootca-cert-file"))

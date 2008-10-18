@@ -9,10 +9,12 @@
 import os
 from ConfigParser import SafeConfigParser
 
-from sshgd.usage import BaseOptions, certs, client, config, server
+from sshgd.usage import certs, client, config, server
+from sshgd.usage.base import BaseOptions
 
 from twisted.plugin import IPlugin
-from twisted.application.service import IServiceMaker, MultiService
+from twisted.application.service import IServiceMaker
+from twisted.python import util, reflect
 from zope.interface import implements
 
 class SSHgDOptions(BaseOptions):
@@ -28,19 +30,35 @@ class SSHgDOptions(BaseOptions):
         ["certs", None, certs.CertsCreatorOptions, "Certificates creator"]
     ]
 
-    runnedPostOption = False
+    def opt_config(self, config_file):
+        config_file = self.opts['config'] = os.path.abspath(
+            os.path.expanduser(config_file))
+        parser = SafeConfigParser()
+        parser.read([config_file])
+        self._set_defaults(parser, self.subCommands)
 
-    def postOptions(self):
-        if self.runnedPostOption: return
-        if self.opts.get('config'):
-            config_file = self.opts['config'] = os.path.abspath(
-                os.path.expanduser(self.opts.get('config'))
-            )
-        self.runnedPostOption = True
-
-#    def getServices(self):
-#        for name, sname, command, description in self.subCommands:
-#            yield command.getService()
+    def _set_defaults(self, parser, subCommands):
+        parser_defaults = parser.defaults()
+        for name, sname, options, doc in subCommands:
+            if hasattr(options, 'optParameters'):
+                parameters = []
+                instance = options().__class__
+                reflect.accumulateClassList(instance, 'optParameters',
+                                            parameters)
+                for idx, parameter in enumerate(parameters):
+                    long, short, default, doc, type = util.padTo(5, parameter)
+                    _def = parser_defaults.get(long, default)
+                    if parser.has_option(name, long):
+                        _def = parser.get(name, long, _def)
+                    if _def != default:
+                        option = [long, short, type and type(_def) or _def, doc]
+                        if type:
+                            option.append(type)
+                        parameters[idx] = option
+                # Override class defaults with config-file defaults
+                options.optParameters = parameters
+            if hasattr(options, "subCommands"):
+                self._set_defaults(parser, options.subCommands)
 
 class ServiceMaker(object):
     implements(IServiceMaker, IPlugin)
@@ -50,19 +68,10 @@ class ServiceMaker(object):
 
     def makeService(self, options):
         return options.subOptions.getService()
-#        master_service = MultiService()
-#        service = options.subOptions.getService()
-#        service.setServiceParent(master_service)
-#        print options.subCommand
-#        print dir(self)
-#
-#        import sys
-#        sys.stdout = sys.__stdout__
-#        return master_service
 
 
 if __name__ == '__main__':
-    import os, sys
+    import sys
     from twisted.python import usage
 
     sys.path.insert(0, os.path.abspath('../../'))

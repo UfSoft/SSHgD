@@ -6,7 +6,7 @@
 # Please view LICENSE for additional licensing information.
 # ==============================================================================
 
-from sshgd.usage import BaseOptions
+from sshgd.usage.base import BaseOptions
 
 class MercurialServerOptions(BaseOptions):
     pass

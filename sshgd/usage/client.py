@@ -17,11 +17,11 @@ from twisted.internet import reactor
 
 from zope.interface import implements
 try:
-    from sshgd.usage import BaseOptions
+    from sshgd.usage.base import BaseOptions
 except ImportError:
     import sys
     sys.path.insert(0, os.path.abspath("."))
-    from sshgd.usage import BaseOptions
+    from sshgd.usage.base import BaseOptions
 
 from sshgd.factories import AdminClientFactory
 from sshgd.creds import ClientCertificate

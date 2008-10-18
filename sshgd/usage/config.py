@@ -21,9 +21,6 @@ class ConfigServerOptions(BaseOptions):
     ]
 
     def postOptions(self):
-        print 1
-        super(ConfigServerOptions, self).postOptions()
-#        BaseOptions.parseOptions(self, options)
         for key, val in self.opts.iteritems():
             if isinstance(val, basestring):
                 self.opts[key] = os.path.abspath(val)
