@@ -9,7 +9,7 @@
 import os
 
 from twisted.application import internet
-from sshgd.usage import BaseOptions
+from sshgd.usage.base import BaseOptions
 from sshgd.factories import AdminServerFactory
 
 class ConfigServerOptions(BaseOptions):
