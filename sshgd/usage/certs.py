@@ -164,6 +164,20 @@ class BaseCertOptions(BaseOptions):
             sys.exit(1)
         self.opts['years'] = 60 * 60 * 24 * 365 * years
 
+    def opt_country(self, country):
+        if len(country) > 2:
+            print "Please use the short name of your country, for USA it's US"
+            sys.exit(1)
+        self.opts['country'] = country
+
+    def postOptions(self):
+        self.parent.postOptions()
+        self.executeCommand()
+
+    def executeCommand(self):
+        raise NotImplementedError
+
+
 class NewCA(BaseCertOptions):
     longdesc = """Create a new root certificate which will be used to issue both
     server and client certificates which are then use in authentication."""
@@ -173,9 +187,7 @@ class NewCA(BaseCertOptions):
         ["common-name", None, "CaCert", "The Root CA common name"],
     ]
 
-    def postOptions(self):
-        super(NewCA, self).postOptions()
-
+    def executeCommand(self):
         privateKey = self.generatePrivateKey(
             os.path.join(self.parent.get('output-dir'), 'private', 'cakey.pem')
         )
@@ -196,7 +208,7 @@ class NewCert(BaseCertOptions):
          "The Root CA certificate file"]
     ]
 
-    def postOptions(self):
+    def executeCommand(self):
         rootCaCert = crypto.load_certificate(crypto.FILETYPE_PEM,
             open(os.path.abspath(
                 os.path.expanduser(self.opts.get("rootca-cert-file"))
@@ -234,13 +246,14 @@ class SignCert(BaseOptions):
          "The Root CA certificate file path"]
     ]
 
-    def postOptions(self):
+    def executeCommand(self):
         print "This command does not currently do anything"
         sys.exit(0)
 
 
 class CertsCreatorOptions(BaseOptions):
-    runnedPostOption = False
+    hasRunPostOptions = False
+    outputDirSetup = False
     optParameters = [
         ["output-dir", "O", "./.ssh", "Output directory"]
     ]
@@ -250,23 +263,19 @@ class CertsCreatorOptions(BaseOptions):
         ["sign", None, SignCert, "Sign an already created certificate"]
     ]
 
+    def opt_output_dir(self, output_dir):
+        if self.outputDirSetup: return
+        output_dir = os.path.abspath(os.path.expanduser(output_dir))
+        if not os.path.exists(output_dir):
+            os.makedirs(os.path.join(output_dir, 'private'),
+                        stat.S_IREAD + stat.S_IWRITE + stat.S_IEXEC)
+        self.opts['output-dir'] = output_dir
+        self.outputDirSetup = True
 
     def postOptions(self):
-        if self.runnedPostOption: return
-        super(CertsCreatorOptions, self).postOptions()
-
-        self.opts['output-dir'] = os.path.abspath(
-            os.path.expanduser(self.opts.get('output-dir'))
-        )
-
-        basepath = self.opts.get("output-dir")
-
-        if not os.path.exists(basepath):
-            os.makedirs(os.path.join(basepath, 'private'),
-                        stat.S_IREAD + stat.S_IWRITE + stat.S_IEXEC)
-
-        self.runnedPostOption = True
-
+        if self.hasRunPostOptions: return
+        self.opt_output_dir(self.opts.get('output-dir'))
+        self.hasRunPostOptions = True
 
 
 if __name__ == '__main__':

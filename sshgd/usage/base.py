@@ -24,4 +24,5 @@ class BaseOptions(usage.Options):
     opt_h = opt_help
 
     def getService(self):
-        raise NotImplementedError
+        print "No subcommand issued"
+        self.opt_help()
