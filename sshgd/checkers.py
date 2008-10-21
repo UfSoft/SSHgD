@@ -25,6 +25,9 @@ class ClientCertificateChecker(object):
     credentialInterfaces = creds.ICertificateCredentials,
     implements(ICredentialsChecker)
 
+    def __init__(self, revoked_serials=[]):
+        self.revoked_serials = revoked_serials
+
     def requestAvatarId(self, certificate):
         print "requestAvatarId", certificate
         d = defer.maybeDeferred(self.checkCertificate, certificate)
@@ -33,20 +36,22 @@ class ClientCertificateChecker(object):
         return d
 
     def checkCertificate(self, certificate):
-        print "def checkCertificate(self, certificate):"
-        return True
-        # Return True or False
-        pass
+#        print "def checkCertificate(self, certificate):", certificate.__class__
+#        print certificate.original.get_serial_number(), type(certificate.original.get_serial_number())
+        return certificate.original.get_serial_number() not in self.revoked_serials
+#        return True
+#        # Return True or False
+#        pass
 
     def _cbRequestAvatarId(self, validCert, certificate):
         print "def _cbRequestAvatarId(self, validCert, certificate):", validCert, certificate
         if not validCert:
             return failure.Failure(UnauthorizedLogin())
         try:
-            print 789, certificate.original.original.digest("md5")
-            return certificate.original.original.digest("md5")
+            return certificate.original.get_serial_number()
         except Exception, err:
             print "Exception", err
+            raise err
         # Check the certificate
         return failure.Failure(UnauthorizedLogin())
 

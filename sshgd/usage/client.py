@@ -26,14 +26,16 @@ except ImportError:
 from sshgd.factories import AdminClientFactory
 from sshgd.creds import ClientCertificate
 
+
 class GetReposOpts(BaseOptions):
-    def run(self, prespective):
-        print "foo", prespective
-        prespective.callRemote("getRepos").addCallback(self.showReturned)
+    def getCommand(self, prespective):
+        return prespective.callRemote("getRepos").addCallback(self.showReturned)
 
     def showReturned(self, result):
-        print result
-        reactor.stop()
+        if result:
+            print result
+        else:
+            print "No repositories available"
 
 class ClientOptions(BaseOptions):
 
@@ -57,45 +59,26 @@ class ClientOptions(BaseOptions):
                             os.path.expanduser(self.opts.get('certificate')))
         self.opts['cacert'] = os.path.abspath(
                             os.path.expanduser(self.opts.get('cacert')))
-        import sys
-        print repr(self.opts)
-#        print repr(self.parent.opts)
-        print "foo 1"
-        self.realstdout = sys.stdout
 
-    def getService(self):
-        import sys
-        print "foo 2"
-        sys.stdout = sys.__stdout__
         factory = AdminClientFactory()
         ctx = factory.getContext(self.opts)
-#        return internet.SSLClient(self.opts.get('host'),
-#                                   self.opts.get('port'),
-#                                   factory,
-#                                   ctx) #.addErrback(stop)
+        deferred = factory.login(self.opts.get("certificate"))
+        deferred.addCallback(self.subOptions.getCommand)
+        deferred.addCallback(self.stop).addErrback(self.stop)
         reactor.connectSSL(self.opts.get('host'),
                            self.opts.get('port'),
                            factory,
                            ctx)
-        credentials = ClientCertificate(self.opts.get("certificate"))
-        d = factory.login(self.opts.get("certificate"))
-#        d = factory.sendCommand("getRepos")
-        d.addCallback(get_repos).addErrback(stop)
 
-
-def get_repos(perspective):
-    print "got perspective ref:", perspective
-    print "asking it to getRepos()"
-    back = perspective.callRemote("getRepos")
-    def foo(b):
-        import sys
-        print >> sys.stderr, b
-    print "Got:", back.addCallback(foo).addCallback(stop)
-
-def stop(failure):
-    if failure:
-        print 111, failure.getTraceback()
-    reactor.stop()
+    def stop(self, traceback):
+        if traceback:
+            print "Something went wrong"
+            print traceback.getTraceback()
+        try:
+            reactor.stop()
+        except:
+            # Reactor might not yet be running
+            pass
 
 if __name__ == '__main__':
     parser = ClientOptions()
@@ -106,8 +89,5 @@ if __name__ == '__main__':
         print '%s: Try --help for usage details.' % (sys.argv[0])
         sys.exit(1)
 
-    parser.getService()
-
     reactor.run()
 
-#    parser.run()

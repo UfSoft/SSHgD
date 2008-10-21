@@ -26,8 +26,12 @@ class ClientCertificate(pb.Referenceable):
                 certificate = Certificate.loadPEM(open(certificate).read())
             else:
                 certificate = Certificate.loadPEM(certificate)
-        self.original = certificate
+        self._original = certificate
         self.certificate = certificate.dumpPEM()
+
+    @property
+    def original(self):
+        return self._original.original
 
     def checkCertificate(self):
         print "checkCertificate() called"
