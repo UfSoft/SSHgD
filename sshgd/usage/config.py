@@ -27,6 +27,7 @@ class ConfigServerOptions(BaseOptions):
 
     def getService(self):
         factory = AdminServerFactory.createFactory()
+        factory.storage = self.parent.storage
         ctx = factory.getContext(self.opts)
         return internet.SSLServer(self.opts.get('port'), factory, ctx)
 

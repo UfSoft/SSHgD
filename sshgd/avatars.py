@@ -22,8 +22,19 @@ class ConfigServerPerspective(Avatar):
 
     def perspective_getRepos(self):
         print "perspective_getRepos()"
-        return {}
-#        return self.factory.storage.get('repos')
+#        return {}
+        return self.factory.storage.get('repos')
+
+    def perspective_addRepos(self, name, path):
+        existing_repos = self.factory.storage.get('repos')
+        if name in existing_repos:
+            return "Error: A repository by that name already exists"
+        for values in existing_repos.itervalues():
+            if values.get('path') == path:
+                return "Error: A repository with that path is already beeing managed"
+        self.factory.storage.add_repo(name, path)
+        return "Repository Added"
+
 
 
 class ConfigClientPerspective(Avatar):

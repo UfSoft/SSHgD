@@ -11,6 +11,7 @@ from ConfigParser import SafeConfigParser
 
 from sshgd.usage import certs, client, config, server
 from sshgd.usage.base import BaseOptions
+from sshgd.storage import ShelfStorage
 
 from twisted.plugin import IPlugin
 from twisted.application.service import IServiceMaker
@@ -19,7 +20,8 @@ from zope.interface import implements
 
 class SSHgDOptions(BaseOptions):
     optParameters = [
-        ["config", "C", None, "Configuration file"]
+        ["config", "C", None, "Configuration file"],
+        ["storage", "S", "./.storage", "Storage Directory"]
     ]
     subCommands = [
         ["server", None, server.MercurialServerOptions,
@@ -59,6 +61,12 @@ class SSHgDOptions(BaseOptions):
                 options.optParameters = parameters
             if hasattr(options, "subCommands"):
                 self._set_defaults(parser, options.subCommands)
+
+    def postOptions(self):
+        self.opts['storage'] = os.path.abspath(os.path.expanduser(
+            self.opts.get('storage'))
+        )
+        self.storage = ShelfStorage(self.opts.get('storage'))
 
 class ServiceMaker(object):
     implements(IServiceMaker, IPlugin)

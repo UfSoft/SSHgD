@@ -21,21 +21,68 @@ try:
 except ImportError:
     import sys
     sys.path.insert(0, os.path.abspath("."))
-    from sshgd.usage.base import BaseOptions
+    from sshgd.usage.base import BaseOptions as BaseOptions
 
 from sshgd.factories import AdminClientFactory
 from sshgd.creds import ClientCertificate
 
+#class BaseOptions(RootBaseOptions):
+#    def getCommand(self, deferred):
+#        if self.subOptions:
+#            return self.subOptions.getCommand(deferred)
 
-class GetReposOpts(BaseOptions):
-    def getCommand(self, prespective):
-        return prespective.callRemote("getRepos").addCallback(self.showReturned)
+class ListRepos(BaseOptions):
+    def getCommand(self, deferred):
+        return deferred.callRemote("getRepos").addCallback(self.showReturned)
+
+    def showReturned(self, result):
+        if result:
+            for repo, vals in result.iteritems():
+                print "Repository:", repo
+                print "      Path:", vals.get('path')
+                print "     Users:", ', '.join(vals.get('users'))
+                print
+        else:
+            print "No repositories available"
+
+class AddRepo(BaseOptions):
+    optParameters = [
+        ["name", "N", None, "Repository Name"],
+        ["path", "P", None, "Repository Path(on remote side)"]
+    ]
+
+    def postOptions(self):
+        for key in ('name', 'path'):
+            if not self.opts.get(key, None):
+                print "Repository %s must not be null" % key
+                sys.exit(1)
+
+
+    def getCommand(self, deferred):
+        return deferred.callRemote(
+            "addRepos", self.opts.get('name'), self.opts.get('path')
+        ).addCallback(self.showReturned)
 
     def showReturned(self, result):
         if result:
             print result
         else:
             print "No repositories available"
+
+
+class GetReposOpts(BaseOptions):
+    subCommands = [
+        ["list", None, ListRepos, "List Available Repositories"],
+        ["add", None, AddRepo, "Add Repository"]
+    ]
+
+    def postOptions(self):
+        if not self.subCommand:
+            print "No sub-command passed"
+            self.opt_help()
+
+    def getCommand(self, deferred):
+        return self.subOptions.getCommand(deferred)
 
 class ClientOptions(BaseOptions):
 
