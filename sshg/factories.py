@@ -6,6 +6,7 @@
 # Please view LICENSE for additional licensing information.
 # ==============================================================================
 
+from twisted.web.server import Site
 from twisted.spread import pb
 from sshg import creds, realms, portals, checkers
 from sshg.utils.certs import OpenSSLCertificateOptions
@@ -77,3 +78,6 @@ class AdminClientFactory(pb.PBClientFactory, SSLContextFactory):
 
     def _sendCertificate(self, root, creds, mind):
         return root.callRemote("login", creds, mind)
+
+class WebServiceFactory(Site, SSLContextFactory):
+    pass

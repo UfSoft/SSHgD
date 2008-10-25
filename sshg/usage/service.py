@@ -10,14 +10,15 @@ import os
 from ConfigParser import SafeConfigParser
 
 from sshg import __package__, __summary__
-from sshg.usage import certs, config, server
+from sshg.usage import certs, config, server, web
 from sshg.usage.base import BaseOptions
-from sshg.storage import ShelfStorage
 
 from twisted.plugin import IPlugin
 from twisted.application.service import IServiceMaker
 from twisted.python import util, reflect
 from zope.interface import implements
+
+from axiom.store import Store
 
 class SSHgDOptions(BaseOptions):
     optParameters = [
@@ -29,7 +30,8 @@ class SSHgDOptions(BaseOptions):
          "Mercurial SSH service"],
         ["config", None, config.ConfigServerOptions,
          "Configuration server service"],
-        ["certs", None, certs.CertsCreatorOptions, "Certificates creator"]
+        ["certs", None, certs.CertsCreatorOptions, "Certificates creator"],
+        ["web", None, web.WebServiceOptions, "Configuration web services"]
     ]
 
     def opt_config(self, config_file):
@@ -66,7 +68,7 @@ class SSHgDOptions(BaseOptions):
         self.opts['storage'] = os.path.abspath(os.path.expanduser(
             self.opts.get('storage'))
         )
-        self.storage = ShelfStorage(self.opts.get('storage'))
+        self.storage = Store(self.opts.get('storage'))
 
 class ServiceMaker(object):
     implements(IServiceMaker, IPlugin)
