@@ -9,9 +9,10 @@
 import os
 from ConfigParser import SafeConfigParser
 
-from sshgd.usage import certs, client, config, server
-from sshgd.usage.base import BaseOptions
-from sshgd.storage import ShelfStorage
+from sshg import __package__, __summary__
+from sshg.usage import certs, config, server
+from sshg.usage.base import BaseOptions
+from sshg.storage import ShelfStorage
 
 from twisted.plugin import IPlugin
 from twisted.application.service import IServiceMaker
@@ -28,7 +29,6 @@ class SSHgDOptions(BaseOptions):
          "Mercurial SSH service"],
         ["config", None, config.ConfigServerOptions,
          "Configuration server service"],
-        ["client", None, client.ClientOptions, "Configuration client"],
         ["certs", None, certs.CertsCreatorOptions, "Certificates creator"]
     ]
 
@@ -70,8 +70,8 @@ class SSHgDOptions(BaseOptions):
 
 class ServiceMaker(object):
     implements(IServiceMaker, IPlugin)
-    tapname = "sshgd" #__package__.lower()
-    description = "foo" #__summary__
+    tapname = __package__.lower()
+    description = __summary__
     options = SSHgDOptions
 
     def makeService(self, options):

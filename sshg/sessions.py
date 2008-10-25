@@ -11,7 +11,7 @@ from twisted.python import components
 
 from zope.interface import implements
 
-from sshgd.avatars import MercurialUser
+from sshg.avatars import MercurialUser
 
 class MercurialSession(object):
     implements(session.ISession)

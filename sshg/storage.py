@@ -14,7 +14,7 @@ from twisted.persisted import dirdbm
 
 from zope.interface import implements
 
-from sshgd.interfaces import StorageInterface
+from sshg.interfaces import StorageInterface
 
 
 class ShelfStorage(dirdbm.Shelf):

@@ -13,7 +13,7 @@ from twisted.python import failure, log
 
 from zope.interface import implements
 
-from sshgd import creds
+from sshg import creds
 
 class ValidCertificate(Exception):
     pass

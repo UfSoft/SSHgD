@@ -7,8 +7,8 @@
 # ==============================================================================
 
 from twisted.spread import pb
-from sshgd import creds, realms, portals, checkers
-from sshgd.utils.certs import OpenSSLCertificateOptions
+from sshg import creds, realms, portals, checkers
+from sshg.utils.certs import OpenSSLCertificateOptions
 
 class AdminServerPortalWrapper(pb._PortalWrapper):
     def remote_login(self, certificate, mind=None):

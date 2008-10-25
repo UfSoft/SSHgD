@@ -9,8 +9,8 @@
 import os
 
 from twisted.application import internet
-from sshgd.usage.base import BaseOptions
-from sshgd.factories import AdminServerFactory
+from sshg.usage.base import BaseOptions
+from sshg.factories import AdminServerFactory
 
 class ConfigServerOptions(BaseOptions):
     longdesc = "fooo bar"

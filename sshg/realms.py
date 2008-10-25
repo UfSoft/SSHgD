@@ -10,7 +10,7 @@ from zope.interface import implements
 
 from twisted.cred.portal import IRealm
 from twisted.spread import pb
-from sshgd.avatars import ConfigServerPerspective
+from sshg.avatars import ConfigServerPerspective
 
 
 class AdminConfigRealm(object):

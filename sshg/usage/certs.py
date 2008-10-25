@@ -17,10 +17,10 @@ from twisted.python import usage
 from OpenSSL import crypto
 
 try:
-    from sshgd.usage.base import BaseOptions as RootBaseOptions
+    from sshg.usage.base import BaseOptions as RootBaseOptions
 except ImportError:
     sys.path.insert(0, '.')
-    from sshgd.usage.base import BaseOptions as RootBaseOptions
+    from sshg.usage.base import BaseOptions as RootBaseOptions
 
 def ask_password(calledback=None):
     try:
