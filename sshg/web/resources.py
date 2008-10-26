@@ -19,6 +19,13 @@ class ConfigResource(object):
     def getUser(self, username):
         return model.User(username=username, store=self.store)
 
+    def delUser(self, username):
+        pass
+
+    def addPubKey(self, username, pubkey):
+        user = model.User(username=username)
+        return user.addPubKey(pubkey)
+
 if __name__ == '__main__':
     f = ConfigResource("abc")
     f.addUser('foo')
