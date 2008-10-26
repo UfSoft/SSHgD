@@ -10,7 +10,7 @@ import os
 from ConfigParser import SafeConfigParser
 
 from sshg import __package__, __summary__
-from sshg.usage import certs, config, server, web
+from sshg.usage import certs, config, server
 from sshg.usage.base import BaseOptions
 
 from twisted.plugin import IPlugin
@@ -31,7 +31,6 @@ class SSHgDOptions(BaseOptions):
         ["config", None, config.ConfigServerOptions,
          "Configuration server service"],
         ["certs", None, certs.CertsCreatorOptions, "Certificates creator"],
-        ["web", None, web.WebServiceOptions, "Configuration web services"]
     ]
 
     def opt_config(self, config_file):

@@ -8,7 +8,7 @@
 
 from twisted.web import xmlrpc
 
-from sshg.web import resources
+from sshg.config import resources
 
 class RPCResource(xmlrpc.XMLRPC):
 

@@ -39,11 +39,12 @@ class AdminServerFactory(pb.PBServerFactory, SSLContextFactory):
     """Configuration factory"""
 
     @classmethod
-    def createFactory(Class):
+    def createFactory(Class, store):
         realm = realms.AdminConfigRealm()
         portal = portals.AdminPortal(realm)
         portal.registerChecker(checkers.ClientCertificateChecker())
         factory = Class(AdminServerPortalRoot(portal))
+        factory.store = store
         realm.factory = portal.factory = factory
         return factory
 #
