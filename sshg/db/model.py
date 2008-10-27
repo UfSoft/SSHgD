@@ -7,6 +7,7 @@
 # ==============================================================================
 
 from axiom import errors, item, attributes
+from epsilon.extime import Time
 
 class NotUnique(ValueError):
     """Item is not unique on database"""
@@ -21,6 +22,7 @@ class User(item.Item):
     username = attributes.text(indexed=True, caseSensitive=True,
                                allowNone=False)
     username.unique = True
+    added = attributes.timestamp(allowNone=False, defaultFactory=Time)
 
     @classmethod
     def create(Class, username, **kw):
@@ -60,6 +62,7 @@ class User(item.Item):
 
     def addPubKey(self, key):
         pubkey = PubKey.create(self, key, store=self.store)
+        print "pubkey", pubkey
         return pubkey
 
 class PubKey(item.Item):
@@ -68,6 +71,7 @@ class PubKey(item.Item):
 
     key = attributes.text(indexed=True, allowNone=False, caseSensitive=True)
     key.unique = True
+    added = attributes.timestamp(allowNone=False, defaultFactory=Time)
     user = attributes.reference(allowNone=False)
 
 
@@ -91,8 +95,11 @@ class PubKey(item.Item):
         if query_args:
             for item in store.query(Class, attributes.AND(*query_args)):
                 raise NotUnique("A pubkey with this value already exists")
-        pubkey = Class(key=pubkey, **kw)
-        pubkey.user = user
+        print 1
+        pubkey = Class(key=pubkey, user=user, **kw)
+        print 2
+#        pubkey.user = user
+        print 3
         return pubkey
 
 
@@ -111,6 +118,7 @@ class Repository(item.Item):
     name.unique = True
     path = attributes.text(indexed=True, allowNone=False, caseSensitive=True)
     path.unique = True
+    added = attributes.timestamp(allowNone=False, defaultFactory=Time)
 
 
     @classmethod

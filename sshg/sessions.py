@@ -6,12 +6,12 @@
 # Please view LICENSE for additional licensing information.
 # ==============================================================================
 
+import os
 from twisted.conch.ssh import session
-from twisted.python import components
+from twisted.internet import reactor
+from twisted.python import log
 
 from zope.interface import implements
-
-from sshg.avatars import MercurialUser
 
 class MercurialSession(object):
     implements(session.ISession)
@@ -19,25 +19,27 @@ class MercurialSession(object):
     hg_process_pid = None
 
     def __init__(self, avatar):
+        log.msg("Innited Mercurial Session: %s" % avatar)
         self.avatar = avatar
         self.factory = avatar.factory
+        self.environ = {}
 
     def getPty(self, term, windowSize, attrs):
+        print "getPTY"
         pass
 
     def windowChanged(self, newWindowSize):
+        print "windowChanged"
         pass
 
     def execCommand(self, protocol, cmd):
-        import os
-        from twisted.internet import reactor
-
-        self.hg_process_pid = reactor.spawnProcess(
-                        processProtocol = protocol,
-                        executable      = 'hg',
-                        args            = cmd.split() + ['--debug'],
-                        env             = os.environ,
-                        path            = '/home/vampas/projects/L10nManager/')
+        print "execCommand"
+#        self.hg_process_pid = reactor.spawnProcess(
+#                        processProtocol = protocol,
+#                        executable      = 'hg',
+#                        args            = cmd.split() + ['--debug'],
+#                        env             = os.environ,
+#                        path            = '/home/vampas/projects/L10nManager/')
 
     def eofReceived(self):
         if self.hg_process_pid:
@@ -50,6 +52,12 @@ class MercurialSession(object):
             self.hg_process_pid = None
 
     def openShell(self, transport):
-        pass
+        log.msg("openShell")
+        from sshg.sftp import FileTransfer
 
-components.registerAdapter(MercurialSession, MercurialUser, session.ISession)
+    def getPtyOwnership(self):
+        print "getPtyOwnership"
+
+    def setModes(self):
+        print "setModes"
+

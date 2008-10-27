@@ -22,6 +22,12 @@ class RPCResource(xmlrpc.XMLRPC):
     def xmlrpc_addUser(self, username):
         return self.resource.addUser(username).username
 
+    def xmlrpc_addPubKey(self, username, pubkey):
+        return self.resource.addPubKey(username, pubkey)
+
+    def xmlrpc_getUserPubKeys(self, username):
+        return [k.key for k in self.resource.getUserPubKeys(username)]
+
     def xmlrpc_foo(self, arg):
         print arg
         return "FOOOOO " + arg

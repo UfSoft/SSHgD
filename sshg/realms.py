@@ -8,9 +8,10 @@
 
 from zope.interface import implements
 
+from twisted.conch.interfaces import IConchUser
 from twisted.cred.portal import IRealm
 from twisted.spread import pb
-from sshg.avatars import ConfigServerPerspective
+from sshg.avatars import ConfigServerPerspective, MercurialUser
 
 
 class AdminConfigRealm(object):
@@ -20,5 +21,15 @@ class AdminConfigRealm(object):
             avatar = ConfigServerPerspective(avatarId)
             avatar.factory = self.factory
             return pb.IPerspective, avatar, avatar.logout
-        else:
-            raise NotImplementedError("no interface")
+        raise Exception, "No supported interfaces found."
+
+
+class MercurialRepositoriesRealm(object):
+    implements(IRealm)
+
+    def requestAvatar(self, avatarId, mind, *interfaces):
+        if IConchUser in interfaces:
+            avatar = MercurialUser(avatarId)
+            avatar.factory = self.factory
+            return interfaces[0], avatar, avatar.logout
+        raise Exception, "No supported interfaces found."

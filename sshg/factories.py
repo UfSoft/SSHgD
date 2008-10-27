@@ -6,8 +6,13 @@
 # Please view LICENSE for additional licensing information.
 # ==============================================================================
 
+from twisted.conch.ssh import factory, keys
+from twisted.internet.ssl import PrivateCertificate
 from twisted.web.server import Site
 from twisted.spread import pb
+
+from OpenSSL.crypto import FILETYPE_PEM
+
 from sshg import creds, realms, portals, checkers
 from sshg.utils.certs import OpenSSLCertificateOptions
 
@@ -82,3 +87,28 @@ class AdminClientFactory(pb.PBClientFactory, SSLContextFactory):
 
 class WebServiceFactory(Site, SSLContextFactory):
     pass
+
+class MercurialReposFactory(factory.SSHFactory):
+
+    _publicKey = None
+    _privateKey = None
+
+    def __init__(self, realm, portal, store, privateCertificate):
+        realm.factory = portal.factory = self
+        self.realm = realm
+        self.portal = portal
+        self.store = store
+
+        self._privateKey = keys.Key.fromString(
+            PrivateCertificate.loadPEM(
+                open(privateCertificate).read()
+            ).privateKey.dump(FILETYPE_PEM)
+        )
+        self._publicKey = self._privateKey.public()
+
+    def getPublicKeys(self):
+        return {'ssh-rsa': self._publicKey}
+
+    def getPrivateKeys(self):
+        return {'ssh-rsa': self._privateKey}
+

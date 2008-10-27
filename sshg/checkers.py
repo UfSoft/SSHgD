@@ -6,6 +6,8 @@
 # Please view LICENSE for additional licensing information.
 # ==============================================================================
 
+from twisted.conch import checkers, error
+from twisted.conch.ssh import keys
 from twisted.cred.checkers import ICredentialsChecker
 from twisted.cred.error import UnauthorizedLogin, UnhandledCredentials
 from twisted.internet import defer
@@ -14,6 +16,7 @@ from twisted.python import failure, log
 from zope.interface import implements
 
 from sshg import creds
+from sshg.db.model import User
 
 class ValidCertificate(Exception):
     pass
@@ -60,3 +63,38 @@ class ClientCertificateChecker(object):
             log.msg(f)
             return failure.Failure(UnauthorizedLogin())
         return f
+
+class MercurialPublicKeysDB(checkers.SSHPublicKeyDatabase):
+
+    def __init__(self, store):
+        self.store = store
+
+    def checkKey(self, credentials):
+        user = None
+        for item in self.store.query(
+                            User, User.username==unicode(credentials.username)):
+            user = item
+            break
+        if not user:
+            return False
+        for pubKey in user.keys:
+            if keys.Key.fromString(data=pubKey.key).blob() == credentials.blob:
+                return True
+        return False
+
+    def _cbRequestAvatarId(self, validKey, credentials):
+        # Stop deprecation Warnings
+        if not validKey:
+            return failure.Failure(UnauthorizedLogin())
+        if not credentials.signature:
+            return failure.Failure(error.ValidPublicKey())
+        else:
+            try:
+                pubKey = keys.Key.fromString(data = credentials.blob)
+                if pubKey.verify(credentials.signature, credentials.sigData):
+                    return credentials.username
+            except: # any error should be treated as a failed login
+                f = failure.Failure()
+                log.err()
+                return f
+        return failure.Failure(UnauthorizedLogin())

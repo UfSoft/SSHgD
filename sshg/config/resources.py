@@ -23,8 +23,33 @@ class ConfigResource(object):
         pass
 
     def addPubKey(self, username, pubkey):
-        user = model.User(username=username)
-        return user.addPubKey(pubkey)
+        username = unicode(username)
+        pubkey = unicode(pubkey)
+        user = None
+        for item in self.store.query(model.User, model.User.username==username):
+            user = item
+            break
+        print "user", user
+        if not user:
+            return "No such user"
+        try:
+            user.addPubKey(pubkey)
+            return "OK"
+        except Exception, err:
+            raise err
+            return "Something failed %s" % err
+
+    def getPubKeys(self, username):
+        username = unicode(username)
+        user = None
+        for item in self.store.query(model.User, model.User.username==username):
+            user = item
+            break
+        if user:
+            return user.keys
+        else:
+            return "No Such User"
+        return []
 
 if __name__ == '__main__':
     f = ConfigResource("abc")

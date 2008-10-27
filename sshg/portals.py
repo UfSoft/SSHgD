@@ -11,3 +11,5 @@ from twisted.cred.portal import Portal
 class AdminPortal(Portal):
     """Configuration admin portal"""
 
+class MercurialRepositoriesPortal(Portal):
+    """Mercurial Repositories Portal"""
