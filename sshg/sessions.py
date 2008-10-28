@@ -19,10 +19,9 @@ class MercurialSession(object):
     hg_process_pid = None
 
     def __init__(self, avatar):
-        log.msg("Innited Mercurial Session: %s" % avatar)
+        log.msg("Initiated Mercurial Session: %s" % avatar)
         self.avatar = avatar
         self.factory = avatar.factory
-        self.environ = {}
 
     def getPty(self, term, windowSize, attrs):
         print "getPTY"
@@ -53,7 +52,6 @@ class MercurialSession(object):
 
     def openShell(self, transport):
         log.msg("openShell")
-        from sshg.sftp import FileTransfer
 
     def getPtyOwnership(self):
         print "getPtyOwnership"

@@ -8,15 +8,16 @@
 
 import os
 import shutil
+import tempfile
 
-from twisted.spread.pb import Avatar
-from twisted.conch.avatar import ConchUser
+from twisted.conch.unix import UnixConchUser
 from twisted.conch.ssh import session, filetransfer
-from twisted.python import components, log
 from twisted.internet import defer
+from twisted.python import components, log
+from twisted.spread.pb import Avatar
 
 from sshg.db.model import User
-from sshg.sftp import SftpFileTransfer, FileTransferServer
+from sshg.sftp import SFTPFileTransfer, FileTransferServer
 
 class ConfigServerPerspective(Avatar):
     def __init__(self, cert_fingerprint):
@@ -39,11 +40,9 @@ class ConfigServerPerspective(Avatar):
             return "Error: A repository by that name already exists"
         for values in existing_repos.itervalues():
             if values.get('path') == path:
-                return "Error: A repository with that path is already beeing managed"
+                return "Error: A repository with that path is already being managed"
         self.factory.storage.add_repo(name, path)
         return "Repository Added"
-
-
 
 class ConfigClientPerspective(Avatar):
     def __init__(self, username):
@@ -55,9 +54,8 @@ class ConfigClientPerspective(Avatar):
     def perspective_getRepos(self):
         return self.factory.storage.get('repos')
 
-from twisted.conch.unix import UnixConchUser
 class MercurialUser(UnixConchUser):
-    homeDir = None
+    homeDir = '/mnt/vfs/'
 
     def __init__(self, username):
         UnixConchUser.__init__(self, username)
@@ -66,6 +64,10 @@ class MercurialUser(UnixConchUser):
         self.subsystemLookup.update({'sftp': FileTransferServer})
 
     def _runAsUser(self, f, *args, **kw):
+        # Override UnixConchUser._runAsUser because we're not changing
+        # uid's nor gid's.
+        # Home directories are created and destroyed and populated at runtime
+        # because they will only hold the public keys file
         try:
             f = iter(f)
         except TypeError:
@@ -74,39 +76,42 @@ class MercurialUser(UnixConchUser):
             func = i[0]
             args = len(i)>1 and i[1] or ()
             kw = len(i)>2 and i[2] or {}
-            r = func(*args, **kw)
+            try:
+                r = func(*args, **kw)
+            except:
+                break
+#            r = func(*args, **kw)
         return r
 
     def getHomeDir(self):
-        import tempfile
-        if not self.homeDir:
-            self.homeDir = tempfile.mkdtemp()
-            print "Home dir created:", self.homeDir
-            store = self.factory.store
-            self.user = store.findUnique(User,
-                                         User.username==unicode(self.username))
-            print "User:", self.user
-            self.keys = [k.key for k in self.user.keys]
-            self.keys_file_path = os.path.abspath(os.path.join(self.homeDir,
-                                                               "keys"))
-#            open(self.keys_file_path).write('')
-#            os.utime(self.keys_file_path)
-            keys_file = open(self.keys_file_path, 'w')
-            keys = []
-            n = 1
-            total = 0
-            for key in self.keys:
-                keys.append(key.rstrip('\n'))
-            while n <= 51200:
-                keys_file = open(self.keys_file_path, 'a')
-                keys_file.write(keys[0] + '\n')
-                keys_file.close()
-                n = os.path.getsize(self.keys_file_path)
-                total += 1
+        if self.homeDir:
+            return self.homeDir
+
+        self.homeDir = tempfile.mkdtemp()
+        log.msg('Creating home directory for user "%s": %s' % (self.username,
+                                                               self.homeDir))
+        store = self.factory.store
+        self.user = store.findUnique(User,
+                                     User.username==unicode(self.username))
+        self.keys = [k.key for k in self.user.keys]
+        self.keys_file_path = os.path.abspath(os.path.join(self.homeDir,
+                                                           "keys"))
+        keys_file = open(self.keys_file_path, 'w')
+        keys = []
+        n = 1
+        total = 0
+        for key in self.keys:
+            keys.append(key.rstrip('\n'))
+        while n <= 51200:
+            keys_file = open(self.keys_file_path, 'a')
+            keys_file.write(keys[0] + '\n')
+            keys_file.close()
+            n = os.path.getsize(self.keys_file_path)
+            total += 1
 #            keys_file.close()
-            self.keys_file_mtime = os.path.getmtime(self.keys_file_path)
-            print "File Size:", os.path.getsize(self.keys_file_path)
-            print "Total Keys:", total
+        self.keys_file_mtime = os.path.getmtime(self.keys_file_path)
+        print "File Size:", os.path.getsize(self.keys_file_path)
+        print "Total Keys:", total
         return self.homeDir
 
     def logout(self):
@@ -116,23 +121,23 @@ class MercurialUser(UnixConchUser):
         log.msg('User "%s" logging out' % self.username)
         if self.homeDir:
             log.msg("Checking if user updated the public keys file")
-            print os.stat(self.keys_file_path)
-            print self.keys_file_mtime
-            print os.path.getmtime(self.keys_file_path)
-            if os.path.getmtime(self.keys_file_path) > self.keys_file_mtime:
-                for line in open(self.keys_file_path):
-                    print repr(line)
-                    print repr(line.rstrip())
-            print "Removing Home dir:", self.homeDir
-            print os.listdir(self.homeDir)
-            shutil.rmtree(self.homeDir, True)
+#            print os.stat(self.keys_file_path)
+#            print self.keys_file_mtime
+#            print os.path.getmtime(self.keys_file_path)
+#            if os.path.getmtime(self.keys_file_path) > self.keys_file_mtime:
+#                for line in open(self.keys_file_path):
+#                    print repr(line)
+#                    print repr(line.rstrip())
+#            print "Removing Home dir:", self.homeDir
+#            print os.listdir(self.homeDir)
+#            shutil.rmtree(self.homeDir, True)
         log.msg('User "%s" logged out' % self.username)
 
 
 
 from sshg.sessions import MercurialSession
 components.registerAdapter(MercurialSession, MercurialUser, session.ISession)
-components.registerAdapter(SftpFileTransfer, MercurialUser,
+components.registerAdapter(SFTPFileTransfer, MercurialUser,
                            filetransfer.ISFTPServer)
 
 #from twisted.conch.unix import SSHSessionForUnixConchUser
