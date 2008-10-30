@@ -19,7 +19,7 @@ class MercurialSession(object):
     hg_process_pid = None
 
     def __init__(self, avatar):
-        log.msg("Initiated Mercurial Session: %s" % avatar)
+        log.msg("Initiated Mercurial Session: %s" % avatar.username)
         self.avatar = avatar
         self.factory = avatar.factory
 
@@ -51,7 +51,9 @@ class MercurialSession(object):
             self.hg_process_pid = None
 
     def openShell(self, transport):
-        log.msg("openShell")
+        # log.msg("openShell")
+        # No shells available here!
+        transport.session.conn.transport.transport.loseConnection()
 
     def getPtyOwnership(self):
         print "getPtyOwnership"

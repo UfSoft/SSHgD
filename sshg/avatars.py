@@ -7,16 +7,19 @@
 # ==============================================================================
 
 import os
+import binascii
 import shutil
 import tempfile
 
 from twisted.conch.unix import UnixConchUser
-from twisted.conch.ssh import session, filetransfer
+from twisted.conch.ssh import session, filetransfer, keys
+from twisted.conch.ssh.filetransfer import SFTPError
 from twisted.internet import defer
 from twisted.python import components, log
 from twisted.spread.pb import Avatar
 
 from sshg.db.model import User
+from sshg.sessions import MercurialSession
 from sshg.sftp import SFTPFileTransfer, FileTransferServer
 
 class ConfigServerPerspective(Avatar):
@@ -55,7 +58,7 @@ class ConfigClientPerspective(Avatar):
         return self.factory.storage.get('repos')
 
 class MercurialUser(UnixConchUser):
-    homeDir = '/mnt/vfs/'
+    homeDir = None
 
     def __init__(self, username):
         UnixConchUser.__init__(self, username)
@@ -78,9 +81,9 @@ class MercurialUser(UnixConchUser):
             kw = len(i)>2 and i[2] or {}
             try:
                 r = func(*args, **kw)
-            except:
+            except filetransfer.SFTPError:
+                # Maybe uploading a file bigger than it should be?
                 break
-#            r = func(*args, **kw)
         return r
 
     def getHomeDir(self):
@@ -93,52 +96,82 @@ class MercurialUser(UnixConchUser):
         store = self.factory.store
         self.user = store.findUnique(User,
                                      User.username==unicode(self.username))
-        self.keys = [k.key for k in self.user.keys]
+        self.keys = [k.key.strip() for k in self.user.keys]
+
+        # Populate keys file with current user's keys
         self.keys_file_path = os.path.abspath(os.path.join(self.homeDir,
                                                            "keys"))
         keys_file = open(self.keys_file_path, 'w')
-        keys = []
-        n = 1
-        total = 0
         for key in self.keys:
-            keys.append(key.rstrip('\n'))
-        while n <= 51200:
-            keys_file = open(self.keys_file_path, 'a')
-            keys_file.write(keys[0] + '\n')
-            keys_file.close()
-            n = os.path.getsize(self.keys_file_path)
-            total += 1
-#            keys_file.close()
-        self.keys_file_mtime = os.path.getmtime(self.keys_file_path)
-        print "File Size:", os.path.getsize(self.keys_file_path)
-        print "Total Keys:", total
+            keys_file.write(key.strip() + '\n')
+        keys_file.close()
+
+        # Store modified time
+        #self.keys_file_mtime = os.path.getmtime(self.keys_file_path)
+        self.keys_file_mtime = os.path.getatime(self.keys_file_path)
         return self.homeDir
 
     def logout(self):
-        defer.maybeDeferred(self._logout)
+        return defer.maybeDeferred(self._logout)
 
     def _logout(self):
         log.msg('User "%s" logging out' % self.username)
         if self.homeDir:
             log.msg("Checking if user updated the public keys file")
-#            print os.stat(self.keys_file_path)
-#            print self.keys_file_mtime
-#            print os.path.getmtime(self.keys_file_path)
-#            if os.path.getmtime(self.keys_file_path) > self.keys_file_mtime:
-#                for line in open(self.keys_file_path):
-#                    print repr(line)
-#                    print repr(line.rstrip())
-#            print "Removing Home dir:", self.homeDir
-#            print os.listdir(self.homeDir)
-#            shutil.rmtree(self.homeDir, True)
+            # Perhaps check each file in the user home dir???
+            #if os.path.getmtime(self.keys_file_path) > self.keys_file_mtime:
+            file_keys = []
+            lineno = 1
+            for line in open(self.keys_file_path):
+                key = line.strip()
+                if not self.validPublicKey(key):
+                    log.msg("Ignoring line %i. Invalid key" % lineno )
+                elif key == self.user.lastUsedKey.key:
+                    log.msg("Key on line %i was used to login. "
+                            "Skipping." % lineno)
+                    if key in self.keys:
+                        self.keys.pop(self.keys.index(key))
+                else:
+                    file_keys.append(key)
+                lineno += 1
+            new_keys = []
+            deleted_keys = 0
+            added_keys = 0
+            for key in file_keys:
+                if key in self.keys:
+                    #log.msg("Key exists in database: %s" % key)
+                    self.keys.pop(self.keys.index(key))
+                elif key not in self.keys:
+                    new_keys.append(key)
+            for dbkey in self.user.keys:
+                # Any existing keys in self.keys were deleted from file and
+                # thus should be deleted from database
+                if dbkey.key in self.keys:
+                    #log.msg("Deleting Key: %r" % dbkey.key)
+                    deleted_keys += 1
+                    dbkey.deleteFromStore()
+            for key in new_keys:
+                # Add new keys to database
+                #log.msg("Adding new key: %r" % key)
+                added_keys += 1
+                self.user.addPubKey(key)
+
+            log.msg("User %s added %s and removed %s keys." % (
+                    self.username, added_keys, deleted_keys))
+            # Now remove any evidences from the file system
+            log.msg("Removing temporary home dir of user %s" % self.username)
+            shutil.rmtree(self.homeDir, True)
         log.msg('User "%s" logged out' % self.username)
 
+    def validPublicKey(self, pubKeyString):
+        try:
+            key = keys.Key.fromString(data=pubKeyString)
+        except (binascii.Error, keys.BadKeyError):
+            return False
+        return True
 
 
-from sshg.sessions import MercurialSession
+
 components.registerAdapter(MercurialSession, MercurialUser, session.ISession)
 components.registerAdapter(SFTPFileTransfer, MercurialUser,
                            filetransfer.ISFTPServer)
-
-#from twisted.conch.unix import SSHSessionForUnixConchUser
-#components.registerAdapter(SSHSessionForUnixConchUser, MercurialUser, session.ISession)

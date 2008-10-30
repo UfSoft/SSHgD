@@ -23,6 +23,8 @@ class User(item.Item):
                                allowNone=False)
     username.unique = True
     added = attributes.timestamp(allowNone=False, defaultFactory=Time)
+    last_login = attributes.timestamp(allowNone=False, defaultFactory=Time)
+    lastUsedKey = attributes.reference(doc="Key used on last login")
 
     @classmethod
     def create(Class, username, **kw):
@@ -55,12 +57,15 @@ class User(item.Item):
         return self.store.query(UserRepoManyToMany,
                                 UserRepoManyToMany.user==self)
 
+
     def addRepo(self, repo):
         if not isinstance(repo, Repository):
             raise NotInstanceOf
         relation = UserRepoManyToMany(repo=repo, user=self, store=self.store)
 
     def addPubKey(self, key):
+        if not isinstance(key, unicode):
+            key = unicode(key)
         pubkey = PubKey.create(self, key, store=self.store)
         print "pubkey", pubkey
         return pubkey
@@ -72,6 +77,7 @@ class PubKey(item.Item):
     key = attributes.text(indexed=True, allowNone=False, caseSensitive=True)
     key.unique = True
     added = attributes.timestamp(allowNone=False, defaultFactory=Time)
+    used = attributes.timestamp(allowNone=False, defaultFactory=Time)
     user = attributes.reference(allowNone=False)
 
 
@@ -101,6 +107,10 @@ class PubKey(item.Item):
 #        pubkey.user = user
         print 3
         return pubkey
+
+    def updateUsed(self):
+        now = Time()
+        self.user.last_login = self.used = now
 
 
 class UserRepoManyToMany(item.Item):

@@ -16,7 +16,7 @@ from twisted.python import failure, log
 from zope.interface import implements
 
 from sshg import creds
-from sshg.db.model import User
+from sshg.db.model import User, PubKey
 
 class ValidCertificate(Exception):
     pass
@@ -70,17 +70,16 @@ class MercurialPublicKeysDB(checkers.SSHPublicKeyDatabase):
         self.store = store
 
     def checkKey(self, credentials):
-        user = None
-        for item in self.store.query(
-                            User, User.username==unicode(credentials.username)):
-            user = item
-            break
+        user = self.store.findUnique(
+                            User, User.username==unicode(credentials.username))
         if not user:
             return False
         for pubKey in user.keys:
             if keys.Key.fromString(data=pubKey.key).blob() == credentials.blob:
+                pubKey.updateUsed()
+                user.lastUsedKey = pubKey
                 return True
-        return False
+            return False
 
     def _cbRequestAvatarId(self, validKey, credentials):
         # Stop deprecation Warnings
@@ -92,6 +91,10 @@ class MercurialPublicKeysDB(checkers.SSHPublicKeyDatabase):
             try:
                 pubKey = keys.Key.fromString(data = credentials.blob)
                 if pubKey.verify(credentials.signature, credentials.sigData):
+                    ## Update last used timestamp of both the key and the user
+                    #dbkey = self.store.findUnique(PubKey,
+                    #                              PubKey.key==unicode(credentials.blob))
+                    #dbkey.updateUsed()
                     return credentials.username
             except: # any error should be treated as a failed login
                 f = failure.Failure()

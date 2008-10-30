@@ -23,7 +23,7 @@ from axiom.store import Store
 class SSHgDOptions(BaseOptions):
     optParameters = [
         ["config", "C", None, "Configuration file"],
-        ["storage", "S", "./.storage", "Storage Directory"]
+        ["storage", "S", "./storage", "Storage Directory"]
     ]
     subCommands = [
         ["server", None, server.MercurialServerOptions,
