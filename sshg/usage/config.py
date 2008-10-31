@@ -43,9 +43,11 @@ class ConfigServerOptions(BaseOptions):
     ]
 
     subCommands = [
-        ["pb", None, PBConfigServerOptions, "PB Based config service"],
+#        ["pb", None, PBConfigServerOptions, "PB Based config service"],
         ["rpc", None, RPCConfigServerOptions, "XML-RPC based config service"]
     ]
+
+    defaultSubCommand = 'rpc'
 
     def postOptions(self):
         for key in ("cacert", "certificate"):

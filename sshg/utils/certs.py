@@ -6,10 +6,7 @@
 # Please view LICENSE for additional licensing information.
 # ==============================================================================
 
-import os
-import itertools
-
-from OpenSSL import crypto, SSL
+from OpenSSL import SSL
 from twisted.python import log
 
 from twisted.internet._sslverify import SSL, _sessionCounter, md5, reflect
