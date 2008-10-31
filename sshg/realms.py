@@ -31,5 +31,5 @@ class MercurialRepositoriesRealm(object):
         if IConchUser in interfaces:
             avatar = MercurialUser(avatarId)
             avatar.factory = self.factory
-            return interfaces[0], avatar, avatar.logout
+            return IConchUser, avatar, avatar.logout
         raise Exception, "No supported interfaces found."

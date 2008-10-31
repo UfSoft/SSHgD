@@ -6,6 +6,7 @@
 # Please view LICENSE for additional licensing information.
 # ==============================================================================
 
+from axiom.errors import ItemNotFound
 from sshg.db import model
 
 class ConfigResource(object):
@@ -17,20 +18,31 @@ class ConfigResource(object):
         return user
 
     def getUser(self, username):
-        return model.User(username=username, store=self.store)
+        try:
+            return self.store.findUnique(model.User,
+                                         model.User.username==username)
+        except ItemNotFound:
+            return None
 
     def delUser(self, username):
-        pass
+        try:
+            user = self.store.findUnique(model.User,
+                                         model.User.username==username)
+            user.deleteFromStore()
+        except ItemNotFound:
+            return False
+        return True
 
     def addPubKey(self, username, pubkey):
-        username = unicode(username)
-        pubkey = unicode(pubkey)
-        user = None
-        for item in self.store.query(model.User, model.User.username==username):
-            user = item
-            break
-        print "user", user
-        if not user:
+        if not isinstance(username, unicode):
+            username = unicode(username)
+        if not isinstance(pubkey, unicode):
+            pubkey = unicode(pubkey)
+
+        try:
+            user = self.store.findUnique(model.User,
+                                         model.User.username==username)
+        except ItemNotFound:
             return "No such user"
         try:
             user.addPubKey(pubkey)
@@ -41,15 +53,51 @@ class ConfigResource(object):
 
     def getPubKeys(self, username):
         username = unicode(username)
-        user = None
-        for item in self.store.query(model.User, model.User.username==username):
-            user = item
-            break
-        if user:
-            return user.keys
-        else:
-            return "No Such User"
-        return []
+        try:
+            user = self.store.findUnique(model.User,
+                                         model.User.username==username)
+        except ItemNotFound:
+            return "No such user"
+        return user.keys
+
+    def addRepository(self, name, path):
+        if not isinstance(name, unicode):
+            name = unicode(name)
+        if not isinstance(path, unicode):
+            path = unicode(path)
+
+        repo = model.Repository(store=self.store, name=name, path=path)
+        return repo
+
+    def addRepositoryUser(self, reponame, username):
+        if not isinstance(reponame, unicode):
+            reponame = unicode(reponame)
+        if not isinstance(username, unicode):
+            username = unicode(username)
+        try:
+            repo = self.store.findUnique(model.Repository,
+                                         model.Repository.name==reponame)
+            repo.addUser(username)
+        except ItemNotFound:
+            return None
+
+    def getRepository(self, reponame):
+        if not isinstance(reponame, unicode):
+            reponame = unicode(reponame)
+        try:
+            return self.store.findUnique(model.Repository,
+                                         model.Repository.name==reponame)
+        except ItemNotFound:
+            return None
+
+    def getRepositoryUsers(self, reponame):
+        if not isinstance(reponame, unicode):
+            reponame = unicode(reponame)
+        try:
+            return self.store.findUnique(model.Repository,
+                                         model.Repository.name==reponame).users
+        except ItemNotFound:
+            return []
 
 if __name__ == '__main__':
     f = ConfigResource("abc")

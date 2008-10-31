@@ -48,14 +48,14 @@ class User(item.Item):
 
     @property
     def keys(self):
-        keys = []
         for key in self.store.query(PubKey, PubKey.user==self):
             yield key
 
     @property
     def repos(self):
-        return self.store.query(UserRepoManyToMany,
-                                UserRepoManyToMany.user==self)
+        for relation in self.store.query(UserRepoManyToMany,
+                                         UserRepoManyToMany.user==self):
+            yield relation.repo
 
 
     def addRepo(self, repo):
@@ -63,12 +63,18 @@ class User(item.Item):
             raise NotInstanceOf
         relation = UserRepoManyToMany(repo=repo, user=self, store=self.store)
 
+    def getRepo(self, reponame):
+        if not isinstance(reponame, unicode):
+            reponame = unicode(reponame)
+        for repo in self.repos:
+            if repo.name == reponame:
+                return repo
+        return None
+
     def addPubKey(self, key):
         if not isinstance(key, unicode):
             key = unicode(key)
-        pubkey = PubKey.create(self, key, store=self.store)
-        print "pubkey", pubkey
-        return pubkey
+        return PubKey.create(self, key, store=self.store)
 
 class PubKey(item.Item):
     typeName = 'pubkey'
@@ -101,16 +107,10 @@ class PubKey(item.Item):
         if query_args:
             for item in store.query(Class, attributes.AND(*query_args)):
                 raise NotUnique("A pubkey with this value already exists")
-        print 1
-        pubkey = Class(key=pubkey, user=user, **kw)
-        print 2
-#        pubkey.user = user
-        print 3
-        return pubkey
+        return Class(key=pubkey, user=user, **kw)
 
     def updateUsed(self):
-        now = Time()
-        self.user.last_login = self.used = now
+        self.user.last_login = self.used = Time()
 
 
 class UserRepoManyToMany(item.Item):
@@ -161,7 +161,7 @@ class Repository(item.Item):
 
     def addUser(self, user):
         if not isinstance(user, User):
-            user = User(username=user, store=self.store)
+            user = self.store.findUnique(User, User.username==user)
         relation = UserRepoManyToMany(user=user, repo=self, store=self.store)
 
 

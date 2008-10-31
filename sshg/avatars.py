@@ -19,7 +19,7 @@ from twisted.python import components, log
 from twisted.spread.pb import Avatar
 
 from sshg.db.model import User
-from sshg.sessions import MercurialSession
+from sshg.sessions import MercurialSession, FixedSSHSession
 from sshg.sftp import SFTPFileTransfer, FileTransferServer
 
 class ConfigServerPerspective(Avatar):
@@ -58,12 +58,12 @@ class ConfigClientPerspective(Avatar):
         return self.factory.storage.get('repos')
 
 class MercurialUser(UnixConchUser):
-    homeDir = None
+    homeDir = _user = _keys = None
 
     def __init__(self, username):
         UnixConchUser.__init__(self, username)
         self.username = username
-        self.channelLookup.update({'session': session.SSHSession})
+        self.channelLookup.update({'session': FixedSSHSession})
         self.subsystemLookup.update({'sftp': FileTransferServer})
 
     def _runAsUser(self, f, *args, **kw):
@@ -85,30 +85,34 @@ class MercurialUser(UnixConchUser):
                 # Maybe uploading a file bigger than it should be?
                 break
         return r
+    
+    @property
+    def user(self):
+        if not self._user:
+            self._user = self.factory.store.findUnique(
+                User, User.username==unicode(self.username)
+            )
+        return self._user
+
+    @property
+    def keys(self):
+        if not self._keys:
+            self._keys = [k.key.strip() for k in self.user.keys]
+        return self._keys
 
     def getHomeDir(self):
-        if self.homeDir:
-            return self.homeDir
+        if not self.homeDir:
+            self.homeDir = tempfile.mkdtemp()
+            log.msg('Creating home directory for user "%s": %s' % (
+                    self.username, self.homeDir))
 
-        self.homeDir = tempfile.mkdtemp()
-        log.msg('Creating home directory for user "%s": %s' % (self.username,
-                                                               self.homeDir))
-        store = self.factory.store
-        self.user = store.findUnique(User,
-                                     User.username==unicode(self.username))
-        self.keys = [k.key.strip() for k in self.user.keys]
-
-        # Populate keys file with current user's keys
-        self.keys_file_path = os.path.abspath(os.path.join(self.homeDir,
-                                                           "keys"))
-        keys_file = open(self.keys_file_path, 'w')
-        for key in self.keys:
-            keys_file.write(key.strip() + '\n')
-        keys_file.close()
-
-        # Store modified time
-        #self.keys_file_mtime = os.path.getmtime(self.keys_file_path)
-        self.keys_file_mtime = os.path.getatime(self.keys_file_path)
+            # Populate keys file with current user's keys
+            self.keys_file_path = os.path.abspath(
+                os.path.join(self.homeDir, "authorized_keys"))
+            keys_file = open(self.keys_file_path, 'w')
+            for key in self.keys:
+                keys_file.write(key + '\n')
+            keys_file.close()
         return self.homeDir
 
     def logout(self):
@@ -119,7 +123,6 @@ class MercurialUser(UnixConchUser):
         if self.homeDir:
             log.msg("Checking if user updated the public keys file")
             # Perhaps check each file in the user home dir???
-            #if os.path.getmtime(self.keys_file_path) > self.keys_file_mtime:
             file_keys = []
             lineno = 1
             for line in open(self.keys_file_path):
@@ -134,33 +137,31 @@ class MercurialUser(UnixConchUser):
                 else:
                     file_keys.append(key)
                 lineno += 1
-            new_keys = []
             deleted_keys = 0
             added_keys = 0
             for key in file_keys:
                 if key in self.keys:
-                    #log.msg("Key exists in database: %s" % key)
                     self.keys.pop(self.keys.index(key))
                 elif key not in self.keys:
-                    new_keys.append(key)
+                    # Add new keys to database
+                    added_keys += 1
+                    self.user.addPubKey(key)
             for dbkey in self.user.keys:
                 # Any existing keys in self.keys were deleted from file and
                 # thus should be deleted from database
                 if dbkey.key in self.keys:
-                    #log.msg("Deleting Key: %r" % dbkey.key)
-                    deleted_keys += 1
-                    dbkey.deleteFromStore()
-            for key in new_keys:
-                # Add new keys to database
-                #log.msg("Adding new key: %r" % key)
-                added_keys += 1
-                self.user.addPubKey(key)
+                    # Sanity Check
+                    if dbkey.key != self.user.lastUsedKey.key:
+                        deleted_keys += 1
+                        dbkey.deleteFromStore()
 
             log.msg("User %s added %s and removed %s keys." % (
                     self.username, added_keys, deleted_keys))
             # Now remove any evidences from the file system
             log.msg("Removing temporary home dir of user %s" % self.username)
             shutil.rmtree(self.homeDir, True)
+        # Remove last used key from user
+        self.user.lastUsedKey = None
         log.msg('User "%s" logged out' % self.username)
 
     def validPublicKey(self, pubKeyString):
@@ -169,8 +170,6 @@ class MercurialUser(UnixConchUser):
         except (binascii.Error, keys.BadKeyError):
             return False
         return True
-
-
 
 components.registerAdapter(MercurialSession, MercurialUser, session.ISession)
 components.registerAdapter(SFTPFileTransfer, MercurialUser,

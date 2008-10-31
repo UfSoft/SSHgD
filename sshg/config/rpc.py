@@ -10,24 +10,62 @@ from twisted.web import xmlrpc
 
 from sshg.config import resources
 
-class RPCResource(xmlrpc.XMLRPC):
-
+class BaseXMLRPCResource(xmlrpc.XMLRPC):
     def __init__(self, store, allowNone=False):
         xmlrpc.XMLRPC.__init__(self, allowNone=allowNone)
         self.resource = resources.ConfigResource(store)
 
-    def xmlrpc_getUser(self, username):
-        return self.resource.getUser(username)
+class Users(BaseXMLRPCResource):
 
-    def xmlrpc_addUser(self, username):
-        return self.resource.addUser(username).username
+    def xmlrpc_add(self, username):
+        added = self.resource.addUser(username)
+        if added:
+            return 'User "%s" added' % added.username
+        return 'Failed to add user "%s"' % added.username
+
+    #def xmlrpc_get(self, username):
+    #    return self.resource.getUser(username)
 
     def xmlrpc_addPubKey(self, username, pubkey):
-        return self.resource.addPubKey(username, pubkey)
+        pubKeyAdded = self.resource.addPubKey(username, pubkey)
+        if pubKeyAdded:
+            return 'Public key for user "%s" added' % username
+        return 'Failed to add public key for user "%s"' % username
 
     def xmlrpc_getUserPubKeys(self, username):
-        return [k.key for k in self.resource.getUserPubKeys(username)]
+        keys = [k.key for k in self.resource.getUserPubKeys(username)]
+        if not keys:
+            "No keys available"
+        return keys
 
-    def xmlrpc_foo(self, arg):
-        print arg
-        return "FOOOOO " + arg
+class Repositories(BaseXMLRPCResource):
+
+    def xmlrpc_add(self, name, path):
+        repo = self.resource.addRepository(name, path)
+        if repo:
+            return 'Repository with the name "%s" added' % name
+        return 'Failed to add repository'
+
+
+    def xmlrpc_addUser(self, reponame, username):
+        repouser = self.resource.addRepositoryUser(reponame, username)
+        if repouser:
+            return 'User "%s" added to repository' % username
+        return 'Failed to add user "%s" to repository' % username
+
+    def xmlrpc_getUsers(self, reponame):
+        users = [u.username for u in self.resource.getRepositoryUsers(reponame)
+                 if u]
+        if not users:
+            return "No users available"
+        return users
+
+
+class RPCResource(xmlrpc.XMLRPC):
+    def __init__(self, store, allowNone=False):
+        xmlrpc.XMLRPC.__init__(self, allowNone=allowNone)
+        users = Users(store, allowNone)
+        repos = Repositories(store, allowNone)
+
+        self.putSubHandler('users', users)
+        self.putSubHandler('repos', repos)

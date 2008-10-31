@@ -7,11 +7,27 @@
 # ==============================================================================
 
 import os
-from twisted.conch.ssh import session
+from twisted.conch import error
+from twisted.conch.ssh import session, channel
 from twisted.internet import reactor
 from twisted.python import log
 
 from zope.interface import implements
+
+class FixedSSHSession(session.SSHSession):
+    def loseConnection(self):
+        if self.client and self.client.transport:
+            # Only call loseConnection if we have a transport set up
+            self.client.transport.loseConnection()
+        channel.SSHChannel.loseConnection(self)
+
+    def dataReceived(self, data):
+        if not self.client:
+            self.conn.sendClose(self)
+            self.buf += data
+        if self.client.transport:
+            # Only write if we have a transport set up
+            self.client.transport.write(data)
 
 class MercurialSession(object):
     implements(session.ISession)
@@ -31,14 +47,36 @@ class MercurialSession(object):
         print "windowChanged"
         pass
 
+
     def execCommand(self, protocol, cmd):
-        print "execCommand"
-#        self.hg_process_pid = reactor.spawnProcess(
-#                        processProtocol = protocol,
-#                        executable      = 'hg',
-#                        args            = cmd.split() + ['--debug'],
-#                        env             = os.environ,
-#                        path            = '/home/vampas/projects/L10nManager/')
+        args = cmd.split()
+        if args.pop(0) != 'hg':
+            protocol.loseConnection()
+
+        # Discard -R
+        args.pop(0)
+
+        # Get repository name
+        repository_name = args.pop(0)
+
+        # Make avatar load stuff from database
+        repo = self.avatar.user.getRepo(repository_name)
+
+        if args.pop(0) != 'serve' or args.pop(0) != '--stdio' or repo is None:
+            # Client is not trying to run an HG repository
+            protocol.loseConnection()
+            return
+
+        print "Are there any args left?", args
+
+        repository_path = str(repo.path)
+
+        process_args = ['hg', '-R', repository_path, 'serve', '--stdio']
+        #process_args.append('--debug')
+        self.hg_process_pid = reactor.spawnProcess(processProtocol = protocol,
+                                                   executable = 'hg',
+                                                   args = process_args,
+                                                   path = repository_path)
 
     def eofReceived(self):
         if self.hg_process_pid:
@@ -51,13 +89,10 @@ class MercurialSession(object):
             self.hg_process_pid = None
 
     def openShell(self, transport):
-        # log.msg("openShell")
-        # No shells available here!
-        transport.session.conn.transport.transport.loseConnection()
+        transport.loseConnection()
 
     def getPtyOwnership(self):
         print "getPtyOwnership"
 
     def setModes(self):
         print "setModes"
-
