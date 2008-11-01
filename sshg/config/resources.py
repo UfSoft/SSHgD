@@ -77,7 +77,7 @@ class ConfigResource(object):
         try:
             repo = self.store.findUnique(model.Repository,
                                          model.Repository.name==reponame)
-            repo.addUser(username)
+            return repo.addUser(username)
         except ItemNotFound:
             return None
 

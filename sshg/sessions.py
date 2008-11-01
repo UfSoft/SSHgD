@@ -52,6 +52,7 @@ class MercurialSession(object):
         args = cmd.split()
         if args.pop(0) != 'hg':
             protocol.loseConnection()
+            return
 
         # Discard -R
         args.pop(0)
@@ -77,6 +78,9 @@ class MercurialSession(object):
                                                    executable = 'hg',
                                                    args = process_args,
                                                    path = repository_path)
+        # Above, one could try instead to open the mercurial repository
+        # ourselves and pipe data back and forth, but, twisted can do that
+        # for us ;)
 
     def eofReceived(self):
         if self.hg_process_pid:
