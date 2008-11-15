@@ -99,11 +99,7 @@ class MercurialReposFactory(factory.SSHFactory):
         self.portal = portal
         self.store = store
 
-        self._privateKey = keys.Key.fromString(
-            PrivateCertificate.loadPEM(
-                open(privateCertificate).read()
-            ).privateKey.dump(FILETYPE_PEM)
-        )
+        self._privateKey = keys.Key.fromString(privateCertificate)
         self._publicKey = self._privateKey.public()
 
     def getPublicKeys(self):
