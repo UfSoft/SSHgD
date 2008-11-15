@@ -67,7 +67,7 @@ class SSHgDOptions(BaseOptions):
         self.opts['storage'] = os.path.abspath(os.path.expanduser(
             self.opts.get('storage'))
         )
-        self.storage = Store(self.opts.get('storage'))
+        self.storage = Store(self.opts.get('storage')) #, debug=True)
 
 class ServiceMaker(object):
     implements(IServiceMaker, IPlugin)

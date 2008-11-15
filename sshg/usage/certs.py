@@ -9,9 +9,11 @@
 import os
 import sys
 import stat
+import random
 import getpass
 import itertools
 
+from axiom.errors import DuplicateUniqueItem, ItemNotFound
 from twisted.python import usage
 
 from OpenSSL import crypto
@@ -21,6 +23,8 @@ try:
 except ImportError:
     sys.path.insert(0, '.')
     from sshg.usage.base import BaseOptions as RootBaseOptions
+
+from sshg.db.model import Certificate
 
 def ask_password(calledback=None):
     try:
@@ -62,12 +66,9 @@ class BaseOptions(RootBaseOptions):
         usage.Options.opt_help(self)
     opt_h = opt_help
 
-#    def parseOptions(self, options=None):
-#        if self.parent:
-#             Make sure the parent postOptions is ran before the
-#             subCommands are to expand paths, etc
-#            self.parent.postOptions()
-#        usage.Options.parseOptions(self, options)
+    def postOptions(self):
+        self.parent.postOptions()
+        self.executeCommand()
 
 class BaseCertOptions(BaseOptions):
     optParameters = [
@@ -81,15 +82,6 @@ class BaseCertOptions(BaseOptions):
         ["email", None, None, "Email Address"],
         ["years", None, 5, "Years to expire", int]
     ]
-
-    def getNextSerial(self):
-        serialfile = os.path.join(self.parent.get('output-dir'), 'serial')
-        if not os.path.exists(serialfile):
-            open(serialfile, 'w').write("0")
-        counter = itertools.count(int(open(serialfile, 'r').read())).next
-        serial = counter()
-        open(serialfile, 'w').write(str(counter()))
-        return serial
 
     def updateDestinguishedName(self, subject):
         DN = {}
@@ -108,19 +100,15 @@ class BaseCertOptions(BaseOptions):
             sys.exit(1)
         return subject
 
-    def generatePrivateKey(self, output_path, write=True):
+    def generatePrivateKey(self):
         privateKey = crypto.PKey()
         privateKey.generate_key(crypto.TYPE_RSA, 1024)
-        if output_path:
-            password = ask_password()
-            encryption_args = []
-            if password:
-                encryption_args.extend(["DES-EDE3-CBC", password])
-            privateKeyData = crypto.dump_privatekey(crypto.FILETYPE_PEM,
-                                                    privateKey,
-                                                    *encryption_args)
-            open(output_path, 'w').write(privateKeyData)
-        return privateKey
+        password = ask_password()
+        encryption_args = password and ["DES-EDE3-CBC", password] or []
+        privateKeyData = crypto.dump_privatekey(crypto.FILETYPE_PEM,
+                                                privateKey,
+                                                *encryption_args)
+        return privateKey, privateKeyData.strip()
 
     def generateCertificateRequest(self, privateKey):
         certReq = crypto.X509Req()
@@ -129,17 +117,17 @@ class BaseCertOptions(BaseOptions):
         certReq.sign(privateKey, "md5")
         return certReq
 
-    def generateCertificate(self, privateKey, output_path, write=True, mode='w',
+    def generateCertificate(self, privateKey, serial,
                             issuer=None, issuerPrivateKey=None):
-        assert mode in ["a", "w"], "'mode' must be one of 'w' or 'a'"
 
         cert = crypto.X509()
         cert.set_subject(self.updateDestinguishedName(cert.get_subject()))
         cert.set_pubkey(privateKey)
-        cert.set_serial_number(self.getNextSerial())
+        cert.set_serial_number(serial)
         cert.gmtime_adj_notBefore(0)
         cert.gmtime_adj_notAfter(self.opts.get('years'))
         if not issuer and not issuerPrivateKey:
+            # Generating a RootCA
             cert.set_issuer(self.updateDestinguishedName(cert.get_subject()))
             cert.add_extensions([
                 crypto.X509Extension('basicConstraints', True, 'CA:TRUE')
@@ -148,10 +136,7 @@ class BaseCertOptions(BaseOptions):
         elif issuer and issuerPrivateKey:
             cert.set_issuer(issuer)
             cert.sign(issuerPrivateKey, "md5")
-        if write:
-            certData = crypto.dump_certificate(crypto.FILETYPE_PEM, cert)
-            open(output_path, mode).write(certData)
-        return cert
+        return crypto.dump_certificate(crypto.FILETYPE_PEM, cert).strip()
 
     def opt_years(self, years):
         try:
@@ -170,9 +155,6 @@ class BaseCertOptions(BaseOptions):
             sys.exit(1)
         self.opts['country'] = country
 
-    def postOptions(self):
-        self.parent.postOptions()
-        self.executeCommand()
 
     def executeCommand(self):
         raise NotImplementedError
@@ -183,99 +165,179 @@ class NewCA(BaseCertOptions):
     server and client certificates which are then use in authentication."""
 
     optParameters = [
+        ["start-serial", None, random.randint(1000, 10000),
+         "Initial serial sequence number. If not provided a default random one "
+         "will be generated.", int],
         ["cert-name", None, "cacert.pem", "Certificate Name"],
         ["common-name", None, "CaCert", "The Root CA common name"],
     ]
 
     def executeCommand(self):
-        privateKey = self.generatePrivateKey(
-            os.path.join(self.parent.get('output-dir'), 'private', 'cakey.pem')
-        )
-        self.generateCertificate(
-            privateKey, os.path.join(self.parent.get('output-dir'),
-                                     self.opts.get('cert-name'))
-        )
+        serial = Certificate.getSerial(self.parent.store) or \
+                                                self.opts.get('start-serial')
+
+        serial = serial == 0 and 1 or serial # Serial shouldn't be 0
+
+        privateKey, privateKeyData = self.generatePrivateKey()
+        content = self.generateCertificate(privateKey, serial)
+        Certificate.create(privateKeyData, content, serial, rootCA=True,
+                           store=self.parent.store)
         sys.exit(0)
 
 class NewCert(BaseCertOptions):
     longdesc = "Create a new certificate which will be signed by the root CA."
 
     optParameters = [
-        ["cert-name", None, "newcert.pem", "Certificate Name"],
-        ["rootca-pk-file", None, "./.ssh/private/cakey.pem",
-         "The Root CA private key file"],
-        ["rootca-cert-file", None, "./.ssh/cacert.pem",
-         "The Root CA certificate file"]
+        ["rootca", None, None, "The RootCA ID.", int],
     ]
 
     def executeCommand(self):
+        rootCA = None
+        if self.opts.get('rootca'):
+            rootCA = self.parent.store.findUnique(
+                            Certificate,
+                            Certificate.storeID==self.opts.get('rootca'),
+                            Certificate.rootCA==True
+                     )
+        else:
+            try:
+                rootCA = self.parent.store.findUnique(
+                                        Certificate, Certificate.rootCA==True)
+            except DuplicateUniqueItem:
+                print "There is more than one Root CA in the database."
+                print "You need to specify the ID of the Root CA certificate", \
+                      "to use"
+                sys.exit(1)
+            except ItemNotFound:
+                print "There's no Root CA in the database yet. Please ", \
+                      "generate one first"
+                sys.exit(1)
+
         rootCaCert = crypto.load_certificate(crypto.FILETYPE_PEM,
-            open(os.path.abspath(
-                os.path.expanduser(self.opts.get("rootca-cert-file"))
-            )).read()
-        )
+                                             rootCA.content)
 
-        rootPrivateKey = crypto.load_privatekey(
-            crypto.FILETYPE_PEM,
-            open(os.path.abspath(
-                os.path.expanduser(self.opts.get("rootca-pk-file")))).read(),
-            ask_password
-        )
-
-        certFilename = os.path.join(self.parent.get('output-dir'),
-                                    self.opts.get('cert-name'))
+        try:
+            rootPrivateKey = crypto.load_privatekey(
+                crypto.FILETYPE_PEM, rootCA.privateKey, ask_password
+            )
+        except crypto.Error, error:
+            print "Private key needs password and wrong password entered:",
+            print error[0][0][2]
+            sys.exit(1)
         print "Generating new private key"
-        privateKey = self.generatePrivateKey(certFilename)
-        self.generateCertificate(privateKey,
-                                 certFilename,
-                                 write=True,
-                                 mode="a",
-                                 issuer=rootCaCert.get_issuer(),
-                                 issuerPrivateKey=rootPrivateKey)
+        serial = Certificate.getSerial(self.parent.store)
+        privateKey, privateKeyData = self.generatePrivateKey()
+        content = self.generateCertificate(privateKey, serial,
+                                           issuer=rootCaCert.get_issuer(),
+                                           issuerPrivateKey=rootPrivateKey)
+        Certificate.create(privateKeyData, content, serial,
+                           store=self.parent.store)
         sys.exit(0)
 
 
-class SignCert(BaseOptions):
-    longdesc = """Sign an already created certificate pair with the root CA."""
+#class SignCert(BaseOptions):
+#    longdesc = """Sign an already created certificate pair with the root CA."""
+#
+#    optParameters = [
+#        ["cert-name", None, "newcert.pem", "Certificate Name"],
+#        ["rootca-pk-file", None, "./.ssh/private/cakey.pem",
+#         "The Root CA private key file"],
+#        ["cacert", None, "./.ssh/cacert.pem",
+#         "The Root CA certificate file path"]
+#    ]
+#
+#    def executeCommand(self):
+#        print "This command does not currently do anything"
+#        sys.exit(0)
+
+class ExportCerts(BaseOptions):
+    longdesc = """Export certificates in store"""
 
     optParameters = [
-        ["cert-name", None, "newcert.pem", "Certificate Name"],
-        ["rootca-pk-file", None, "./.ssh/private/cakey.pem",
-         "The Root CA private key file"],
-        ["cacert", None, "./.ssh/cacert.pem",
-         "The Root CA certificate file path"]
+        ["output-dir", "O", './', "Output directory"],
+        ["id", "i", None, "certificate id", int],
+    ]
+    optFlags = [
+        ["include-private-key", "I", "Include Certificate's private key."]
     ]
 
-    def executeCommand(self):
-        print "This command does not currently do anything"
-        sys.exit(0)
-
-
-class CertsCreatorOptions(BaseOptions):
-    hasRunPostOptions = False
-    outputDirSetup = False
-    optParameters = [
-        ["output-dir", "O", "./.ssh", "Output directory"]
-    ]
-    subCommands = [
-        ["newca", None, NewCA, "Create new Root CA"],
-        ["newcert", None, NewCert, "Create new certificate"],
-        ["sign", None, SignCert, "Sign an already created certificate"]
-    ]
+    writeMode = 'w'
 
     def opt_output_dir(self, output_dir):
-        if self.outputDirSetup: return
         output_dir = os.path.abspath(os.path.expanduser(output_dir))
         if not os.path.exists(output_dir):
             os.makedirs(os.path.join(output_dir, 'private'),
                         stat.S_IREAD + stat.S_IWRITE + stat.S_IEXEC)
         self.opts['output-dir'] = output_dir
-        self.outputDirSetup = True
+
+
+    def executeCommand(self):
+        id = self.opts.get('id')
+        store = self.parent.store
+        output_base_dir = self.opts.get('output-dir')
+        try:
+            certificate = store.findUnique(Certificate,
+                                           Certificate.storeID==id)
+        except ItemNotFound:
+            print "No certificate by the id %s in store" % id
+            sys.exit(1)
+
+        outpath = os.path.join(output_base_dir, "%i.pem" % id)
+        print 'Exporting certificate with id %i to "%s" ...' % (id, outpath),
+
+        if self.opts.get('include-private-key'):
+            print "including private-key ...",
+            open(outpath, self.writeMode).write(certificate.privateKey + '\n')
+            self.writeMode = 'a'
+
+        open(outpath, self.writeMode).write(certificate.content + '\n')
+        print "Done."
+        sys.exit(0)
+
+
+class ListCerts(BaseOptions):
+    longdesc = """List certificates in store"""
+
+    def executeCommand(self):
+        store = self.parent.store
+        query = store.query(Certificate)
+        maxid = max([len(str(i.storeID)) for i in query])
+        maxserial = max([len(i.rootCA and "*%s" % i.serial or
+                             str(i.serial)) for i in query]
+                        + [len('Serial')])
+        maxCN = max([len(i.subject.CN) for i in query] + [len("Common Name")])
+        maxIS = max([len(i.issuer.CN) for i in query] + [len("Issuer")])
+        format = ' %%s %%-%ds | %%-%ds | %%-%ds | %%-%ds' % (
+            maxid, maxserial, maxCN, maxIS)
+        header = format % ('', 'ID', 'Serial', 'Common Name', "Issuer")
+        print
+        print header
+        print '-'*len(header)
+        for item in query:
+            print format % (item.rootCA and "*"  or ' ',
+                            item.storeID, item.serial, item.subject.CN,
+                            item.issuer.CN)
+        print '\n * - Root Certificate\n'
+        sys.exit(0)
+
+
+class CertsCreatorOptions(BaseOptions):
+    hasRunPostOptions = False
+    subCommands = [
+        ["newca", None, NewCA, "Create new Root CA"],
+        ["newcert", None, NewCert, "Create new certificate"],
+        ["list", None, ListCerts, "List certificates in store"],
+        ["export", None, ExportCerts, "Export certificates in store"],
+#        ["sign", None, SignCert, "Sign an already created certificate"]
+    ]
+
+    @property
+    def store(self):
+        self.parent.postOptions()
+        return self.parent.storage
 
     def postOptions(self):
-        if self.hasRunPostOptions: return
-        self.opt_output_dir(self.opts.get('output-dir'))
-        self.hasRunPostOptions = True
+        pass
 
 
 if __name__ == '__main__':
