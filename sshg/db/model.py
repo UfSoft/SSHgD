@@ -39,6 +39,7 @@ class Certificate(item.Item):
     serial = integer(indexed=True, allowNone=False)
     revoked = boolean(default=False, allowNone=False)
     rootCA = boolean(default=False, allowNone=False)
+    rootCaCert = reference()
 
     # Private Attributes
     _cert = inmemory()
@@ -80,6 +81,11 @@ class Certificate(item.Item):
         if 'store' not in kw:
             raise Exception("You must pass a store")
         store = kw.get('store')
+        if 'rootCaID' in kw:
+            rootCa = store.findUnique(Certificate,
+                                      Certificate.storeID==kw.get('rootCaID'))
+            del kw['rootCaID']
+            kw['rootCaCert'] = rootCa
         query_args = [getattr(Class, 'privateKey')==privateKey,
                       getattr(Class, 'content')==content,
                       getattr(Class, 'serial')==serial]
@@ -91,7 +97,7 @@ class Certificate(item.Item):
                         query_args.append(attr==val)
         try:
             if store.findUnique(Class, AND(*query_args)):
-                raise NotUnique("An equal certificate already exsits")
+                raise NotUnique("An equal certificate already exists")
         except errors.ItemNotFound:
             return Class(privateKey=privateKey, content=content,
                          serial=serial, **kw)

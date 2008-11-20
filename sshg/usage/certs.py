@@ -138,7 +138,9 @@ class BaseCertOptions(BaseOptions):
             cert.sign(issuerPrivateKey, "md5")
         return crypto.dump_certificate(crypto.FILETYPE_PEM, cert).strip()
 
-    def opt_years(self, years):
+    def postOptions(self):
+        self.parent.postOptions()
+        years = self.opts['years']
         try:
             years = int(years)
         except ValueError:
@@ -149,11 +151,12 @@ class BaseCertOptions(BaseOptions):
             sys.exit(1)
         self.opts['years'] = 60 * 60 * 24 * 365 * years
 
-    def opt_country(self, country):
+        country = self.opts['country']
         if len(country) > 2:
             print "Please use the short name of your country, for USA it's US"
             sys.exit(1)
         self.opts['country'] = country
+        self.executeCommand()
 
 
     def executeCommand(self):
@@ -193,6 +196,7 @@ class NewCert(BaseCertOptions):
 
     def executeCommand(self):
         rootCA = None
+        store = self.parent.store
         if self.opts.get('rootca'):
             rootCA = self.parent.store.findUnique(
                             Certificate,
@@ -201,8 +205,7 @@ class NewCert(BaseCertOptions):
                      )
         else:
             try:
-                rootCA = self.parent.store.findUnique(
-                                        Certificate, Certificate.rootCA==True)
+                rootCA = store.findUnique(Certificate, Certificate.rootCA==True)
             except DuplicateUniqueItem:
                 print "There is more than one Root CA in the database."
                 print "You need to specify the ID of the Root CA certificate", \
@@ -231,7 +234,7 @@ class NewCert(BaseCertOptions):
                                            issuer=rootCaCert.get_issuer(),
                                            issuerPrivateKey=rootPrivateKey)
         Certificate.create(privateKeyData, content, serial,
-                           store=self.parent.store)
+                           rootCaID=rootCA.storeID, store=store)
         sys.exit(0)
 
 
@@ -306,17 +309,23 @@ class ListCerts(BaseOptions):
                              str(i.serial)) for i in query]
                         + [len('Serial')])
         maxCN = max([len(i.subject.CN) for i in query] + [len("Common Name")])
-        maxIS = max([len(i.issuer.CN) for i in query] + [len("Issuer")])
+        maxIS = max([len(i.issuer.CN) for i in query] +
+                    [len("Issuer (Root CA ID)")])
         format = ' %%s %%-%ds | %%-%ds | %%-%ds | %%-%ds' % (
             maxid, maxserial, maxCN, maxIS)
-        header = format % ('', 'ID', 'Serial', 'Common Name', "Issuer")
+        header = format % ('', 'ID', 'Serial', 'Common Name',
+                           "Issuer (Root CA ID/Serial)")
         print
         print header
         print '-'*len(header)
         for item in query:
             print format % (item.rootCA and "*"  or ' ',
                             item.storeID, item.serial, item.subject.CN,
-                            item.issuer.CN)
+                            item.issuer.CN + (
+                                hasattr(item.rootCaCert, 'storeID') and
+                                " (%s/%s)" % (
+                                    item.rootCaCert.storeID,
+                                    item.rootCaCert.serial) or ''))
         print '\n * - Root Certificate\n'
         sys.exit(0)
 

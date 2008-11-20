@@ -63,6 +63,15 @@ class SSHgDOptions(BaseOptions):
             if hasattr(options, "subCommands"):
                 self._set_defaults(parser, options.subCommands)
 
+    @property
+    def store(self):
+        if not hasattr(self, 'storage'):
+            self.opts['storage'] = os.path.abspath(os.path.expanduser(
+                self.opts.get('storage'))
+            )
+            self.storage = Store(self.opts.get('storage')) #, debug=True)
+        return self.storage
+
     def postOptions(self):
         self.opts['storage'] = os.path.abspath(os.path.expanduser(
             self.opts.get('storage'))

@@ -38,7 +38,7 @@ class SSLContextFactory(object):
         return OpenSSLCertificateOptions(opts.get('certificate'),
                                          opts.get('certificate'),
                                          verify=True,
-                                         caCerts=opts.get('cacert'))
+                                         caCerts=opts.get('caCerts'))
 
 class AdminServerFactory(pb.PBServerFactory, SSLContextFactory):
     """Configuration factory"""

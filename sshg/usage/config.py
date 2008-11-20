@@ -6,8 +6,6 @@
 # Please view LICENSE for additional licensing information.
 # ==============================================================================
 
-import os
-
 from twisted.application import internet
 from sshg.usage.base import BaseOptions
 from sshg.factories import AdminServerFactory, WebServiceFactory
@@ -38,8 +36,7 @@ class RPCConfigServerOptions(BaseOptions):
 class ConfigServerOptions(BaseOptions):
     longdesc = "Configuration Server(s)"
     optParameters = [
-        ["cacert", "c", ".ssh/cacert.pem", "Root CA certificate file path"],
-        ["certificate", "f", ".ssh/server.pem", "private key file path"],
+        ["certid", "c", None, "Certificate ID", int],
     ]
 
     subCommands = [
@@ -50,10 +47,19 @@ class ConfigServerOptions(BaseOptions):
     defaultSubCommand = 'rpc'
 
     def postOptions(self):
-        for key in ("cacert", "certificate"):
-            self.opts[key] = os.path.abspath(
-                os.path.expanduser(self.opts.get(key))
-            )
+        from axiom import errors
+        from sshg.db.model import Certificate
+        rootCAs = self.parent.store.query(Certificate, Certificate.rootCA==True)
+        certId = self.opts.get('certid')
+        try:
+            cert = self.parent.store.findUnique(Certificate,
+                                                Certificate.storeID==certId)
+            self.opts['certificate'] = cert
+            self.opts['caCerts'] = rootCAs
+        except errors.ItemNotFound:
+            import sys
+            print "Certificate with the ID %i was not found" % certId
+            sys.exit(1)
 
     def getService(self):
         return self.subOptions.getService()

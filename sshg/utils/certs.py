@@ -6,7 +6,7 @@
 # Please view LICENSE for additional licensing information.
 # ==============================================================================
 
-from OpenSSL import SSL
+from OpenSSL import crypto, SSL
 from twisted.python import log
 
 from twisted.internet._sslverify import SSL, _sessionCounter, md5, reflect
@@ -36,22 +36,27 @@ class OpenSSLCertificateOptions(OSSLCO):
         else:
             log.msg("Did NOT Verified  Certificate with Common-Name: "
                     '"%s"; Issuer: "%s"; Errnum: %s; Errdepth: %d' % (
-                    x509.get_subject().CN, x509.get_issuer().CN),
-                    errnum, errdepth)
-#        import sys
-#        sys.stdout = sys.__stdout__
-#        print '_verify (ok=%d):' % preverify_ok
-#        print '  subject:', x509.get_subject()
-#        print '  issuer:', x509.get_issuer()
-#        print '  errnum %s, errdepth %d' % (errnum, errdepth)
+                    x509.get_subject().CN, x509.get_issuer().CN,
+                    errnum, errdepth))
         return preverify_ok
 
     def _makeContext(self):
         ctx = SSL.Context(self.method)
 
         if self.certificate is not None and self.privateKey is not None:
-            ctx.use_certificate_file(self.certificate)
-            ctx.use_privatekey_file(self.privateKey)
+            if isinstance(self.certificate, basestring):
+                ctx.use_certificate(crypto.load_certificate(
+                    crypto.FILETYPE_PEM, self.certificate))
+            else:
+                ctx.use_certificate(crypto.load_certificate(
+                    crypto.FILETYPE_PEM, self.certificate.content))
+
+            if isinstance(self.privateKey, basestring):
+                ctx.use_privatekey(crypto.load_privatekey(
+                    crypto.FILETYPE_PEM, self.privateKey))
+            else:
+                ctx.use_privatekey(crypto.load_privatekey(
+                    crypto.FILETYPE_PEM, self.privateKey.privateKey))
             # Sanity check
             ctx.check_privatekey()
 
@@ -63,10 +68,20 @@ class OpenSSLCertificateOptions(OSSLCO):
             if self.verifyOnce:
                 verifyFlags |= SSL.VERIFY_CLIENT_ONCE
             if self.caCerts:
-                ctx.load_verify_locations(self.caCerts)
-#                store = ctx.get_cert_store()
-#                for cert in self.caCerts:
-#                    store.add_cert(cert)
+                store = ctx.get_cert_store()
+                if isinstance(self.caCerts, basestring):
+                    store.add_cert(crypto.load_certificate(
+                        crypto.FILETYPE_PEM, self.caCerts))
+                else:
+                    for cert in self.caCerts:
+                        content = None
+                        if isinstance(cert, basestring):
+                            content = cert
+                        else:
+                            content = cert.content
+                        store.add_cert(crypto.load_certificate(
+                            crypto.FILETYPE_PEM, content))
+
 
         ctx.set_verify(verifyFlags, self._verify)
 
